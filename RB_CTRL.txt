@@ -1,0 +1,726 @@
+/*GR-SAKURA Sketch Template Version: V1.02*/
+
+#include <rxduino.h>
+#include <iodefine_gcc63n.h>
+#include <intvect.h>
+
+volatile int state = LOW;
+long lga_Clock_OneHK[4] = {0, 0, 0, 0};   // 100Khzクロック
+long lga_Clock_TwoHK[4] = {0, 0, 0, 0};   // 200Khzクロック
+long lga_Clock_Term[4] = {0, 0, 0, 0};    // 区間クロック
+long lg_MAXValue_Term = 400*2;            // 区間クロックの最大値
+long lg_TIME_OneSec = 100*1000*2;         // 単位時間(1[s])
+int  iga_Cnt_PlsUp[4] = {0, 0, 0, 0};     // パルスの立ちあがった回数
+int  iga_Prm_ChaVelTim[4] = {0, 0, 0, 0}; //
+int  iTermPRM[4] = {0, 0, 0, 0};
+int  iTermCNT[4] = {0, 0, 0, 0};
+int  iFlagChange[4] = {0, 0, 0, 0};
+int  iPRMCNT[4] = {0, 0, 0, 0};
+int  iary_MOVE_END[4] = {1, 1, 1, 1};
+int  iTotal_Move_End = 0;
+//FLAG
+
+int  iary_PLS_PRM[4];
+//name space
+int  iary_PLS1_CN[4] = {6, 36, 26, 42};//パルスチャンネル
+int  iary_PLS2_CN[4] = {7, 37, 27, 41};//
+int  iary_PLS_CN[4] = {6, 36, 26, 42}; //iary_PLS1_CN[4]
+int  iCN_NUM = 0;
+int  iTotal_Num = 0;
+int  iFlag_ETC_End = 0;
+//過去のパルス量
+int  pulse1d = 7500;
+int  pulse2d = 6250;
+int  pulseZd = 0;//上空から数えて何mm下にいるか
+int  pulseRd = 0; 
+//PRM
+int  iary_ACC[4];//4ms毎にiACC[Hz]増加する。
+int  iary_HIGHVEL[4];
+int  iary_LOWVEL[4];
+int  iary_Pt[4];
+//int INPUT = 0;
+//int OUTPUT = 1;
+unsigned long ulTimer[4] = {0, 0, 0, 0};
+unsigned long ulTimer0[4] = {0, 0, 0, 0};//タイマー計測のための基準
+unsigned long ulTimer1[4] = {0, 0, 0, 0};//タイマー計測のための実測値
+unsigned long ulg_Timer_PlsBase[4] = {0, 0, 0, 0};
+unsigned long ulg_Timer_PlsNew[4] = {0, 0, 0, 0};
+unsigned long ulg_Timer_PlsTotal[4] = {0, 0, 0, 0};
+long lHz[4] = {0, 0, 0, 0};    // Hzを規定
+long lary_PlsCNT[4] = {0, 0, 0, 0};// Pulseの立ち上がりをカウント
+int iACC[4];//4ms毎にiACC[Hz]増加する。
+int iHIGHVEL[4];
+int iLOWVEL[4];
+int iPt[4];
+double dRound = 0.999;
+int im_Prm_Acc[4]; 
+int im_Prm_Dec[4];
+int iP10[4];
+int iP11[4];
+int iP12[4];
+int iP13[4];
+int iP1[4];
+int iP2[4];
+int iP31[4];
+int iP32[4];
+int iP33[4];
+int iP3[4];
+int iP4[4];
+int im_Prm_UniVel[4];
+int iPs[4];//あまり
+
+int iga_Prm_Case01[4];
+int iga_Prm_Case02[4];
+int iga_Prm_Case03[4];
+int iga_Prm_Case04[4];
+int iga_Prm_Case11[4];
+int iga_Prm_Case12[4];
+int iga_Prm_Case13[4];
+int iga_Prm_Case14[4];
+int iga_Prm_Case15[4];
+int iga_Prm_Case16[4];
+int iga_Prm_Case17[4];
+int iga_Prm_Case21[4];
+int iga_Prm_Case22[4];
+//定義
+long lUpNum[4] = {0, 0, 0, 0};                 // PlsUPのタイミング
+long lDownNum[4] = {0, 0, 0, 0};   // PlsDOWNのタイミング
+long lFinishNum[4] = {0, 0, 0, 0};    // Pls出力の終了
+int  imPlsNum[4] = {0, 0, 0, 0};
+//イーサネット対応
+char c;
+
+
+//void Excep_TMR0_CMIA0(void)__INTTERUPT_FUNC;
+void Excep_TMR1_CMIA1(void)__INTTERUPT_FUNC;
+
+void init_PLS(){
+
+    //加速度台形則作成に必要な詳細条件の算出
+    for(int ia= 0; ia<4; ia++){
+    iCN_NUM = ia;
+    dRound = 0.999;
+    iACC[iCN_NUM] = iary_ACC[iCN_NUM];//4ms毎にiACC[Hz]増加する。
+    iHIGHVEL[iCN_NUM] = iary_HIGHVEL[iCN_NUM];
+    iLOWVEL[iCN_NUM] = iary_LOWVEL[iCN_NUM];
+    iPt[iCN_NUM]  = iary_Pt[iCN_NUM];
+    im_Prm_Acc[iCN_NUM] = (iHIGHVEL[iCN_NUM] - iLOWVEL[iCN_NUM] + iACC[iCN_NUM] * dRound)/iACC[iCN_NUM] - 2 ; 
+    im_Prm_Dec[iCN_NUM] = (iHIGHVEL[iCN_NUM] - iLOWVEL[iCN_NUM] + iACC[iCN_NUM] * dRound)/iACC[iCN_NUM] - 2 ;
+    iP10[iCN_NUM] = iLOWVEL[iCN_NUM]*lg_MAXValue_Term/lg_TIME_OneSec;
+    iP11[iCN_NUM] = (iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*1/10)*lg_MAXValue_Term/lg_TIME_OneSec;
+    iP12[iCN_NUM] = (iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*2/10)*lg_MAXValue_Term/lg_TIME_OneSec;
+    iP13[iCN_NUM] = (iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*4/10)*lg_MAXValue_Term/lg_TIME_OneSec;
+    iP1[iCN_NUM]  = iP10[iCN_NUM] + iP11[iCN_NUM] + iP12[iCN_NUM] + iP13[iCN_NUM];
+    iP2[iCN_NUM] =  ((iACC[iCN_NUM]+iLOWVEL[iCN_NUM]+iLOWVEL[iCN_NUM]+(im_Prm_Acc[iCN_NUM]+1)*iACC[iCN_NUM])*(im_Prm_Acc[iCN_NUM]+1)/2*lg_MAXValue_Term/lg_TIME_OneSec);
+    iP31[iCN_NUM] = (iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*4/10)*lg_MAXValue_Term/lg_TIME_OneSec;
+    iP32[iCN_NUM] = (iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*2/10)*lg_MAXValue_Term/lg_TIME_OneSec;
+    iP33[iCN_NUM] = (iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*1/10)*lg_MAXValue_Term/lg_TIME_OneSec;
+    iP3[iCN_NUM] = iP31[iCN_NUM] + iP32[iCN_NUM] + iP33[iCN_NUM];
+    iP4[iCN_NUM] = iPt[iCN_NUM] - 2*(iP1[iCN_NUM]+iP2[iCN_NUM]+iP3[iCN_NUM]);
+    im_Prm_UniVel[iCN_NUM] = ((lg_TIME_OneSec/lg_MAXValue_Term*iP4[iCN_NUM]+dRound*iHIGHVEL[iCN_NUM])/iHIGHVEL[iCN_NUM]);
+    iPs[iCN_NUM] = iP4[iCN_NUM] - im_Prm_UniVel[iCN_NUM] *iHIGHVEL[iCN_NUM];//あまり
+
+    iga_Prm_Case01[iCN_NUM] = 4;
+    iga_Prm_Case02[iCN_NUM] =  4 + im_Prm_Acc[iCN_NUM] + 1;
+    iga_Prm_Case03[iCN_NUM] = 4 + im_Prm_Acc[iCN_NUM] + 3 + im_Prm_UniVel[iCN_NUM] + 3 + 1;
+    iga_Prm_Case04[iCN_NUM] = 4 + im_Prm_Acc[iCN_NUM] + 3 + im_Prm_UniVel[iCN_NUM] + 3 + im_Prm_Dec[iCN_NUM] + 1;
+    iga_Prm_Case11[iCN_NUM] = 4 + 1 ;
+    iga_Prm_Case12[iCN_NUM] = 4 + im_Prm_Acc[iCN_NUM];
+    iga_Prm_Case13[iCN_NUM] = im_Prm_Acc[iCN_NUM] + 7 + 1;
+    iga_Prm_Case14[iCN_NUM] = im_Prm_Acc[iCN_NUM] + im_Prm_UniVel[iCN_NUM] + 7;
+    iga_Prm_Case15[iCN_NUM] = im_Prm_Acc[iCN_NUM] + im_Prm_UniVel[iCN_NUM] + 10 + 1;
+    iga_Prm_Case16[iCN_NUM] = im_Prm_Acc[iCN_NUM] + im_Prm_UniVel[iCN_NUM] + im_Prm_Dec[iCN_NUM] + 10;
+    iga_Prm_Case17[iCN_NUM] = im_Prm_Acc[iCN_NUM] + im_Prm_UniVel[iCN_NUM] + im_Prm_Dec[iCN_NUM] +14 + 3;
+    iga_Prm_Case21[iCN_NUM] = 4 + im_Prm_Acc[iCN_NUM] + 3;
+    iga_Prm_Case22[iCN_NUM] = 4 + im_Prm_Acc[iCN_NUM] + 3 + im_Prm_UniVel[iCN_NUM] +1;
+    
+    Serial.print("im_Prm_Acc =");
+    Serial.println(im_Prm_Acc[iCN_NUM],DEC);
+    Serial.print("im_Prm_Dec =");
+    Serial.println(im_Prm_Dec[iCN_NUM],DEC);
+    Serial.print("iPt =");
+    Serial.println(iPt[iCN_NUM],DEC);
+    Serial.print("iP11 =");
+    Serial.println(iP11[iCN_NUM],DEC);
+    Serial.print("iP12 =");
+    Serial.println(iP12[iCN_NUM],DEC);
+    Serial.print("iP13 =");
+    Serial.println(iP13[iCN_NUM],DEC);
+    Serial.print("iP1 =");
+    Serial.println(iP1[iCN_NUM],DEC);
+    Serial.print("iP2 =");
+    Serial.println(iP2[iCN_NUM],DEC);
+    Serial.print("iP31 =");
+    Serial.println(iP31[iCN_NUM],DEC);
+    Serial.print("iP32 =");
+    Serial.println(iP32[iCN_NUM],DEC);
+    Serial.print("iP33 =");
+    Serial.println(iP33[iCN_NUM],DEC);
+    Serial.print("iP3 =");
+    Serial.println(iP3[iCN_NUM],DEC);
+    Serial.print("iP4 =");
+    Serial.println(iP4[iCN_NUM],DEC);
+    Serial.print("im_Prm_UniVel =");
+    Serial.println(im_Prm_UniVel[iCN_NUM],DEC);
+    Serial.print("lDOWNNUM = ");
+    Serial.println(lDownNum[iCN_NUM],DEC);
+    Serial.print("lFinishNum = ");
+    Serial.println(lFinishNum[iCN_NUM],DEC);
+    Serial.print("lOneHKClock = ");
+    Serial.println(lga_Clock_OneHK[iCN_NUM],DEC);
+    Serial.print("lg_MAXValue_Term = ");
+    Serial.println(lg_MAXValue_Term,DEC);
+    Serial.print("lga_Clock_Term = ");
+    Serial.println(lga_Clock_Term[iCN_NUM],DEC);
+    delay(200);
+    }
+    iCN_NUM = 0;
+    // 受信バッファにデータが入るまで待機。
+    while (Serial.available() == 0);        
+    Serial.println("Finish, Caluculation");
+    // 一旦、受信バッファにデータがあれば、
+    if (Serial.available() > 0) {
+        // 読み込んで、廃棄。
+        c = Serial.read();
+    }
+}
+
+void Calculation_InverseKinematics(){
+    //ステータスデータ(定数)
+    double    RB_ARM1        =  0.25;                         //アーム1長さ0.225[mm]
+    double    RB_ARM2        =  0.175;                        //アーム2長さ0.175[mm]
+    int       InitialP1    =  7500;                           //駆動系1の初期位置[pulse]
+    int       InitialP2    =  6250;                           //駆動系2の初期位置[pulse]
+    int       InitialPR    =  2625*2;                         //駆動系Rの初期位置[pulse]
+    int       InitialPZ    =  5000;                           //駆動系Zの初期位置[pulse]200[mm]上空地点
+    double    PulseAngle1    =  0.72;                         //駆動系1パルス角0.09[°]
+    double    PulseAngle2    =  0.72;                         //駆動系2パルス角0.1125[°]
+    double    PulseAngleR    =  0.72;                         //駆動系Rパルス角0.1125[°]
+    double    PulseAngleZ    =  0.72;                         //駆動系Zパルス角0.1125[°]
+    int       N1            =  30;                            //駆動系1の減速比
+    int       N2            =  25;                            //駆動系2の減速比
+    int       NZ            =  20;                            //駆動系Zのピッチ
+    int       NR            =  10;                            //駆動系Rの減速比
+    int       Act1AccMAX    =  260;
+    int       Act2AccMAX    =  225;
+    int       ActZAccMAX    =  370;
+    int       ActRAccMAX    =  600;
+    int       Act1VelMAX    =  7845;//7845;
+    int       Act2VelMAX    =  6769;//6769;
+    int       ActZVelMAX    =  5555;//5555;
+    int       ActRVelMAX    =  2400;
+    int       pulse1;
+    int       pulse2;
+    int       pulseZHighVel;
+    int       pulseZLowVel;
+    int       PoZHighVel = 100;
+    int       PoZLowVel = 10;
+    int       pulseR; 
+    int       iForm = 0;
+    double    PoX = -400;
+    double    PoY = -300;
+    double    PoR = 90;
+
+    //ステータスデータ(目標値)
+    if(iForm == 0 ){//手系が左手系の時
+        double    tmp                = sqrt(PoX/1000*PoX/1000+PoY/1000*PoY/1000);
+        double    p1p                = tmp;
+        double    ca                = (RB_ARM1*RB_ARM1 + tmp*tmp - RB_ARM2*RB_ARM2)/(2*RB_ARM1*p1p);
+        double    cb                = (RB_ARM1*RB_ARM1 + RB_ARM2*RB_ARM2 -p1p*p1p)/(2*RB_ARM1*RB_ARM2);
+        double    alpha            = atan2(sqrt(1-ca*ca),ca);
+        double    beta            = atan2(sqrt(1-cb*cb),cb);
+        double    phi                = atan2(PoY,PoX);
+        double    theta1rad        = PI/2 - phi - alpha;
+        double    theta2rad        = PI-beta;
+        double    theta1A            = theta1rad * 360 / 2 /PI;//20130722-つける
+        double    theta2A            = theta2rad * 360 / 2 /PI;
+        Serial.println("右手系");
+                pulse1            = theta1A * N1 / PulseAngle1 + InitialP1;
+                if(pulse1 < 0 || pulse1 > 55000){
+                    Serial.println("pulse1値異常");
+
+                }
+                pulse2            = theta2A * N2 / PulseAngle2 + InitialP2;
+                if(pulse2 < 0 || pulse2 > 55000){
+                    Serial.println("pulse2値異常");
+
+                }
+                pulseZHighVel   = InitialPZ - PoZHighVel/ NZ * 360 / PulseAngleZ;
+                pulseZLowVel    = pulseZHighVel - PoZLowVel / NZ * 360 / PulseAngleZ;
+                pulseR            = -(PoR-(90+theta1A)+theta2A) * NR / PulseAngleR + InitialPR;//20130725変更
+                
+    }
+    else if(iForm == 1){//手系が右手系の時
+        double    tmp                = sqrt(PoX/1000*PoX/1000+PoY/1000*PoY/1000);
+        double    p1p                = tmp;
+        double    ca                = (RB_ARM1*RB_ARM1 + tmp*tmp - RB_ARM2*RB_ARM2)/(2*RB_ARM1*p1p);
+        double    cb                = (RB_ARM1*RB_ARM1 + RB_ARM2*RB_ARM2 -p1p*p1p)/(2*RB_ARM1*RB_ARM2);
+        double    alpha            = atan2(sqrt(1-ca*ca),ca);//2013/04/03変更
+        double    beta            = atan2(sqrt(1-cb*cb),cb);//2013/04/03変更
+        double    phi                = atan2(PoY,PoX);
+        if(phi < -2.95){
+            phi = 3.141592 + 3.141592 + phi; 
+        }
+        double    theta1rad        = PI/2 - phi + alpha;
+        double    theta2rad        = - PI + beta;
+        double    theta1A            = theta1rad * 360 / 2 /PI;//20130722-つける
+        double    theta2A            = theta2rad * 360 / 2 /PI;
+                pulse1            = theta1A * N1 / PulseAngle1 + InitialP1;
+                if(pulse1 < 0 || pulse1 > 55000){
+                    Serial.println("pulse1値異常");
+
+                }
+                pulse2            = theta2A * N2 / PulseAngle2 + InitialP2;
+                if(pulse2 < 0 || pulse2 > 55000){
+                    Serial.println("pulse2値異常");
+
+                }
+                pulseZHighVel   = InitialPZ - PoZHighVel*1000 / NZ * 360 / PulseAngleZ;
+                pulseZLowVel    = pulseZHighVel - PoZLowVel*1000 / NZ * 360 / PulseAngleZ;
+                pulseR            = -(PoR-(90+theta1A)+theta2A) * NR / PulseAngleR + InitialPR;//20130725変更
+    }
+    else{
+
+    }
+    //加速度
+    iary_ACC[0] = Act1AccMAX;//500    
+    iary_ACC[1] = Act2AccMAX;//500
+    iary_ACC[2] = ActZAccMAX;//500
+    iary_ACC[3] = ActRAccMAX;
+    //最高速度
+    iary_HIGHVEL[0] = Act1VelMAX;//5000
+    iary_HIGHVEL[1] = Act2VelMAX;//5000
+    iary_HIGHVEL[2] = ActZVelMAX;//4000
+    iary_HIGHVEL[3] = ActRVelMAX;
+    //最低速度
+    iary_LOWVEL[0] = 500;//500
+    iary_LOWVEL[1] = 500;
+    iary_LOWVEL[2] = 500;
+    iary_LOWVEL[3] = 500;
+    //8000,6000,2500,600
+    iary_Pt[0] = pulse1 - pulse1d;//6667;
+    //1412;ACT1の動作確認済みパルス
+    iary_Pt[1] = pulse2 - pulse2d;//3819;
+    //1218;ACT2の動作確認済みパルス
+    iary_Pt[2] = 500;//pulseZHighVel - pulseZd;//
+    iary_Pt[3] = 600;//pulseR - pulseRd;
+
+    //パルス値に応じて動作方向を規定
+    for(int ia=0;ia<4;ia++){
+        if(iary_Pt[ia] > 0){
+            iary_PLS_CN[ia] = iary_PLS1_CN[ia]; 
+            Serial.print("Pulse = ");
+            Serial.print(iary_Pt[ia],DEC);
+            Serial.print(",CN = ");
+            Serial.print(ia,DEC);
+            if(ia != 2){
+            Serial.println(",反時計回り");
+            }
+            else{
+            Serial.println(",下方向");
+            }
+        }
+        else{
+            iary_PLS_CN[ia] = iary_PLS2_CN[ia]; 
+            iary_Pt[ia] = iary_Pt[ia]*(-1);
+            Serial.print("Pulse = ");
+            Serial.print(iary_Pt[ia],DEC);
+            Serial.print(",CN = ");
+            Serial.print(ia,DEC);
+            if(ia != 2){
+            Serial.println(",時計回り");
+            }
+            else{
+            Serial.println(",上方向");
+            }
+        }
+
+    }//for文の終わり
+
+    // 受信バッファにデータが入るまで待機。
+    while (Serial.available() == 0);        
+    Serial.println("Finish, Caluculation");
+    // 一旦、受信バッファにデータがあれば、
+    if (Serial.available() > 0) {
+        // 読み込んで、廃棄。
+        c = Serial.read();
+    }
+}
+
+
+void start_PLS(){
+    
+    int iPLS_CN = iary_PLS_CN[iCN_NUM];
+    int iPLS_PRM = iary_PLS_PRM[iCN_NUM];
+
+    
+
+    // 速度計算
+    if(iFlagChange[iCN_NUM] == 0){//区間の区切り
+        /*
+        Serial.print(" iTermPRM=");
+        Serial.print( iTermPRM[iCN_NUM],DEC);
+        Serial.print(" iTermCNT=");
+        Serial.print( iTermCNT[iCN_NUM],DEC);
+        Serial.print(", CN =");
+        Serial.println( iCN_NUM,DEC);
+        */
+        if(( iga_Prm_Case01[iCN_NUM] < iTermCNT[iCN_NUM] && iTermCNT[iCN_NUM] < iga_Prm_Case02[iCN_NUM])
+        ||(  iga_Prm_Case03[iCN_NUM] < iTermCNT[iCN_NUM] && iTermCNT[iCN_NUM] <= iga_Prm_Case04[iCN_NUM]))
+        {
+            iga_Prm_ChaVelTim[iCN_NUM]++;
+        }
+        else if( ( iTermCNT[iCN_NUM] < iga_Prm_Case11[iCN_NUM] )
+           ||    (  iga_Prm_Case12[iCN_NUM] < iTermCNT[iCN_NUM] && iTermCNT[iCN_NUM] <=  iga_Prm_Case13[iCN_NUM])
+           ||    (  iga_Prm_Case14[iCN_NUM] < iTermCNT[iCN_NUM] && iTermCNT[iCN_NUM] <=  iga_Prm_Case15[iCN_NUM] )
+           ||    (  iga_Prm_Case16[iCN_NUM] < iTermCNT[iCN_NUM] && iTermCNT[iCN_NUM] <=  iga_Prm_Case17[iCN_NUM] ) )//iPs用一次的
+        {
+            iTermPRM[iCN_NUM]++;
+        }
+        else if(iga_Prm_Case21[iCN_NUM] < iTermCNT[iCN_NUM] && iTermCNT[iCN_NUM] < iga_Prm_Case22[iCN_NUM])
+        {
+        
+        }
+        else{
+            Serial.println("----error----");
+            Serial.print("im_Prm_Acc =");
+            Serial.println(im_Prm_Acc[iCN_NUM],DEC);
+            Serial.print("im_Prm_Dec =");
+            Serial.println(im_Prm_Dec[iCN_NUM],DEC);
+            Serial.print("iPt =");
+            Serial.println(iPt[iCN_NUM],DEC);
+            Serial.print("iP11 =");
+            Serial.println(iP11[iCN_NUM],DEC);
+            Serial.print("iP12 =");
+            Serial.println(iP12[iCN_NUM],DEC);
+            Serial.print("iP13 =");
+            Serial.println(iP13[iCN_NUM],DEC);
+            Serial.print("iP1 =");
+            Serial.println(iP1[iCN_NUM],DEC);
+            Serial.print("iP2 =");
+            Serial.println(iP2[iCN_NUM],DEC);
+            Serial.print("iP31 =");
+            Serial.println(iP31[iCN_NUM],DEC);
+            Serial.print("iP32 =");
+            Serial.println(iP32[iCN_NUM],DEC);
+            Serial.print("iP33 =");
+            Serial.println(iP33[iCN_NUM],DEC);
+            Serial.print("iP3 =");
+            Serial.println(iP3[iCN_NUM],DEC);
+            Serial.print("iP4 =");
+            Serial.println(iP4[iCN_NUM],DEC);
+            Serial.print("im_Prm_UniVel =");
+            Serial.println(im_Prm_UniVel[iCN_NUM],DEC);
+        }
+        iFlagChange[iCN_NUM] = 1;
+        
+
+        switch(iTermPRM[iCN_NUM]){
+            case 1: lHz[iCN_NUM] = iLOWVEL[iCN_NUM];
+                   ulg_Timer_PlsBase[iCN_NUM] = millis();
+             break;
+            case 2: lHz[iCN_NUM] = iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*1/10;
+             break;
+            case 3: lHz[iCN_NUM] = iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*2/10;
+             break;
+            case 4: lHz[iCN_NUM] = iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*4/10;
+                     iga_Prm_ChaVelTim[iCN_NUM] = 0;
+             break;
+            case 5: lHz[iCN_NUM] = iLOWVEL[iCN_NUM] + iACC[iCN_NUM]*(iga_Prm_ChaVelTim[iCN_NUM]+1);
+             break;
+            case 6: lHz[iCN_NUM] = iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*4/10;
+             break;  
+            case 7: lHz[iCN_NUM] = iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*2/10;
+             break;
+            case 8: lHz[iCN_NUM] = iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*1/10;
+             break;
+           case  9: lHz[iCN_NUM] = iHIGHVEL[iCN_NUM];
+             break;
+           case 10: lHz[iCN_NUM] = iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*1/10;
+             break;
+           case 11: lHz[iCN_NUM] = iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*2/10;
+             break;
+           case 12: lHz[iCN_NUM] = iHIGHVEL[iCN_NUM] - iACC[iCN_NUM]*4/10;
+                     iga_Prm_ChaVelTim[iCN_NUM] = 0;
+             break;
+           case 13: lHz[iCN_NUM] = iLOWVEL[iCN_NUM] + iACC[iCN_NUM]*(im_Prm_Dec[iCN_NUM] - iga_Prm_ChaVelTim[iCN_NUM] + 1);
+             break;
+           case 14: lHz[iCN_NUM] = iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*4/10;
+             break;
+           case 15: lHz[iCN_NUM] = iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*2/10;
+             break;
+           case 16: lHz[iCN_NUM] = iLOWVEL[iCN_NUM]  + iACC[iCN_NUM]*1/10;
+             break;
+           case 17: lHz[iCN_NUM] = iLOWVEL[iCN_NUM];
+             break;
+           case 18: lHz[iCN_NUM] = -1;
+                
+                     ulg_Timer_PlsNew[iCN_NUM] = millis();
+                     ulg_Timer_PlsTotal[iCN_NUM] = ulg_Timer_PlsNew[iCN_NUM] - ulg_Timer_PlsBase[iCN_NUM];
+                     //Serial.print("PlsEndTimer = ");
+                     //Serial.println(ulg_Timer_PlsTotal[iCN_NUM],DEC);
+                     lga_Clock_OneHK[iCN_NUM] = 0;
+                     lga_Clock_Term[iCN_NUM] = 0;
+                     if(iary_MOVE_END[iCN_NUM] == 0){
+                         Serial.print("TIME = ");
+                         Serial.print(ulg_Timer_PlsTotal[iCN_NUM],DEC);
+                         Serial.print(",CN = ");
+                         Serial.println(iCN_NUM,DEC);
+                         iary_MOVE_END[iCN_NUM] = 1;
+                         Serial.print("pulseTotal = ");
+                         Serial.println(lary_PlsCNT[iCN_NUM]);
+                     }
+                     else{
+                        //Serial.print("他の軸を待機 軸：");
+                        //Serial.println(iCN_NUM, DEC);
+                     }
+             break;
+           case 19: lHz[iCN_NUM] = -1;
+                    //すべての軸が止まったら次の動作
+                     if(iTotal_Move_End == 1){
+                         iTermCNT[iCN_NUM] = 0;
+                        iTermPRM[iCN_NUM] = 0;
+                        //パルスチャンネル入れ替え
+                        if(iary_PLS_CN[iCN_NUM] == iary_PLS1_CN[iCN_NUM]){
+                        iary_PLS_CN[iCN_NUM] = iary_PLS2_CN[iCN_NUM];
+                        }
+                        else if(iary_PLS_CN[iCN_NUM] == iary_PLS2_CN[iCN_NUM]){
+                        iary_PLS_CN[iCN_NUM] = iary_PLS1_CN[iCN_NUM];
+                        }
+                        else{
+                        Serial.print("ERROR[PLS設定]");
+                        }
+                        iFlagChange[iCN_NUM] = 0;
+                        iga_Cnt_PlsUp[iCN_NUM] = 0;
+                     }
+             break;
+           default:
+                    iFlagChange[iCN_NUM] = 1;
+        }
+        if(lHz[iCN_NUM] > 1){
+        // 速度計画に応じたパルス出力
+        lUpNum[iCN_NUM] = 1;                                            // PlsUPのタイミング
+        lDownNum[iCN_NUM] = 100*1000/lHz[iCN_NUM];                            // PlsDOWNのタイミング
+        lFinishNum[iCN_NUM] = 2 *lDownNum[iCN_NUM] - 1;        // Pls出力の終了
+        imPlsNum[iCN_NUM] = lHz[iCN_NUM] * lg_MAXValue_Term /lg_TIME_OneSec; 
+        }
+    }
+    else{}
+
+     
+     
+    if(lHz[iCN_NUM] >= 1){
+        iary_MOVE_END[iCN_NUM] = 0;
+        //int ACT1_PLS_PRM = digitalRead(ACT1_PLS);
+        if(lga_Clock_OneHK[iCN_NUM] == lUpNum[iCN_NUM] && iPLS_PRM == 1){//途中で回転数変化し、かつ信号がONの時。
+            digitalWrite(iPLS_CN, LOW);
+            iPLS_PRM = 0;
+            iary_PLS_PRM[iCN_NUM] = 0;
+            Serial.println("----LED0_HIGH----");
+            lga_Clock_OneHK[iCN_NUM] = lDownNum[iCN_NUM];
+            Serial.print("im_Prm_Acc =");
+            Serial.println(im_Prm_Acc[iCN_NUM],DEC);
+            Serial.print("im_Prm_Dec =");
+            Serial.println(im_Prm_Dec[iCN_NUM],DEC);
+            Serial.print("iPt =");
+            Serial.println(iPt[iCN_NUM],DEC);
+            Serial.print("iP11 =");
+            Serial.println(iP11[iCN_NUM],DEC);
+            Serial.print("iP12 =");
+            Serial.println(iP12[iCN_NUM],DEC);
+            Serial.print("iP13 =");
+            Serial.println(iP13[iCN_NUM],DEC);
+            Serial.print("iP1 =");
+            Serial.println(iP1[iCN_NUM],DEC);
+            Serial.print("iP2 =");
+            Serial.println(iP2[iCN_NUM],DEC);
+            Serial.print("iP31 =");
+            Serial.println(iP31[iCN_NUM],DEC);
+            Serial.print("iP32 =");
+            Serial.println(iP32[iCN_NUM],DEC);
+            Serial.print("iP33 =");
+            Serial.println(iP33[iCN_NUM],DEC);
+            Serial.print("iP3 =");
+            Serial.println(iP3[iCN_NUM],DEC);
+            Serial.print("iP4 =");
+            Serial.println(iP4[iCN_NUM],DEC);
+            Serial.print("im_Prm_UniVel =");
+            Serial.println(im_Prm_UniVel[iCN_NUM],DEC);
+            Serial.print("lDOWNNUM = ");
+            Serial.println(lDownNum[iCN_NUM],DEC);
+            Serial.print("lFinishNum");
+            Serial.println(lFinishNum[iCN_NUM],DEC);
+            Serial.print("iTermCNT = ");
+            Serial.println(iTermCNT[iCN_NUM],DEC);
+            Serial.print("iTermPRM = ");
+            Serial.println(iTermPRM[iCN_NUM],DEC);
+        }
+        else if(lga_Clock_OneHK[iCN_NUM] == lUpNum[iCN_NUM]  && iga_Cnt_PlsUp[iCN_NUM] < imPlsNum[iCN_NUM]  ){
+           digitalWrite(iPLS_CN, HIGH);
+           iPLS_PRM = 1;
+           iary_PLS_PRM[iCN_NUM] = 1;
+           lary_PlsCNT[iCN_NUM]++;
+           iga_Cnt_PlsUp[iCN_NUM]++;
+        }
+        else if(lga_Clock_OneHK[iCN_NUM] == lDownNum[iCN_NUM] && iga_Cnt_PlsUp[iCN_NUM] <= imPlsNum[iCN_NUM]){
+           digitalWrite(iPLS_CN, LOW);
+           iPLS_PRM = 0;
+           iary_PLS_PRM[iCN_NUM] = 0;
+        }
+        else if(lga_Clock_OneHK[iCN_NUM] == lFinishNum[iCN_NUM]){
+           lga_Clock_OneHK[iCN_NUM] = 0;
+            if(lg_MAXValue_Term <= lga_Clock_Term[iCN_NUM]){
+              /*
+              ulg_Timer_PlsNew[iCN_NUM] = millis();
+              ulg_Timer_PlsTotal[iCN_NUM] = ulg_Timer_PlsNew[iCN_NUM] - ulg_Timer_PlsBase[iCN_NUM];
+ 
+              Serial.print("ima_Cnt_PlsUp = ");
+              Serial.print(iga_Cnt_PlsUp[iCN_NUM],DEC);
+              Serial.print(",imPlsNum = "); 
+              Serial.print(imPlsNum[iCN_NUM],DEC);
+              Serial.print(",Hz = ");
+              Serial.print(lHz[iCN_NUM],DEC);
+              Serial.print(",CN = ");
+              Serial.print(iCN_NUM,DEC);
+              Serial.print(",TIME = ");
+              Serial.println( ulg_Timer_PlsTotal[iCN_NUM],DEC);
+              */
+              lga_Clock_Term[iCN_NUM] = 0;
+              iTermCNT[iCN_NUM]++;
+              iFlagChange[iCN_NUM] = 0;
+              iga_Cnt_PlsUp[iCN_NUM] = 0;
+            }
+        }
+        
+        else if(lga_Clock_OneHK[iCN_NUM] > lFinishNum[iCN_NUM]){
+           Serial.println("----Pulse_over_FLOW----");
+           Serial.print("lga_Clock_OneHK = ");
+           Serial.println(lga_Clock_OneHK[iCN_NUM],DEC);
+           Serial.print("lFINISH = ");
+           Serial.println(lFinishNum[iCN_NUM],DEC);
+        }
+        //else if(lg_MAXValue_Term < lg_MAXValue_TermClock){
+        //   digitalWrite(PIN_LED2, HIGH);
+        //}
+    }
+    else{
+    //Serial.println("Hzcount");
+    //Serial.println(lga_Clock_OneHK[iCN_NUM],DEC);
+        //digitalWrite(iPLS_CN, LOW);
+    }
+    
+
+}
+
+void Excep_TMR1_CMIA1(void){
+    if(iFlag_ETC_End == 1){
+        Serial.print("ETC_END_ERROR");
+    }
+    iFlag_ETC_End = 1;
+    // MOVE_END条件判定
+    if(iary_MOVE_END[0] == 1 &&
+       iary_MOVE_END[1] == 1 &&
+       iary_MOVE_END[2] == 1 &&
+       iary_MOVE_END[3] == 1 &&
+       iTotal_Num < 11){//11 3回動作
+       iTotal_Move_End = 1;
+       iTotal_Num++;
+       Serial.println("-------->");
+       Serial.print("動作回数：");
+       Serial.println(iTotal_Num,DEC);
+       for(int ia=0; ia < 4; ia++){
+       iFlagChange[ia] = 0;
+       lga_Clock_OneHK[ia] = 0;
+       lga_Clock_Term[ia] = 0;
+       }
+    }
+    else{
+       iTotal_Move_End = 0;
+    }
+    
+    for(int iNUM = 0; iNUM < 4; iNUM++){
+        iCN_NUM = iNUM;
+        lga_Clock_OneHK[iCN_NUM]++;
+        lga_Clock_Term[iCN_NUM]++;
+        lga_Clock_TwoHK[iCN_NUM]++;
+        start_PLS();
+        
+        if(lga_Clock_TwoHK[iCN_NUM] == 100*1000){
+            
+            ulTimer1[iCN_NUM] = micros();
+            ulTimer[iCN_NUM] = ulTimer1[iCN_NUM] -ulTimer0[iCN_NUM];
+            Serial.print("Time = ");
+            Serial.print(ulTimer[iCN_NUM],DEC);
+            Serial.print(",CN = ");
+            Serial.println(iCN_NUM,DEC);
+            ulTimer1[iCN_NUM] = 0;
+            ulTimer0[iCN_NUM] = micros();
+            lga_Clock_TwoHK[iCN_NUM] = 0;
+            
+       }
+        
+    }
+    iFlag_ETC_End = 0;
+    //Serial.println("OK");
+
+}
+
+void init_tmr16(){
+
+  MSTP(TMR0) = 0;//100KHZ = 48MHz 5マイクロ[s]
+  TMR0.TCORA = 24*5 - 1;
+  TMR1.TCORA = 2 - 1;//50 - 1;
+  TMR0.TCR.BIT.CCLR = 1;
+  TMR1.TCR.BIT.CCLR = 1; 
+  TMR1.TCCR.BIT.CSS = 3;
+  TMR1.TCR.BIT.CMIEA = 1;
+  IEN(TMR1,CMIA1) = 1;
+  IPR(TMR1,CMIA1) = 1;
+}
+
+void start_tmr16(){
+  TMR0.TCCR.BYTE = 0x08;
+  //2013.11.18 Y.Dake
+  //TMR0.TCCR.BYTE = 0x08;
+}
+
+void setup(){
+pinMode(PIN_LED0, OUTPUT);
+//pinMode(PIN_LED1, OUTPUT);
+//pinMode(PIN_LED2, OUTPUT);
+//pinMode(PIN_LED3, OUTPUT);
+
+for( int ia = 0; ia < 4; ia++){
+pinMode(iary_PLS1_CN[ia], OUTPUT);// ACT1_PLS
+pinMode(iary_PLS2_CN[ia], OUTPUT);// ACT1_DIR
+digitalWrite(iary_PLS1_CN[ia], LOW);
+digitalWrite(iary_PLS2_CN[ia], LOW);
+}
+digitalWrite(PIN_LED0, HIGH);//動作開始LED
+
+//digitalWrite(PIN_LED0, HIGH);
+
+//analogRead()
+
+// シリアルポートを9600bpsで開始。
+    Serial.begin(9600);
+    // 受信バッファにデータが入るまで待機。
+    while (Serial.available() == 0);        
+    Serial.println("Hello, GR-SAKURA!");
+    // 一旦、受信バッファにデータがあれば、
+    if (Serial.available() > 0) {
+        // 読み込んで、廃棄。
+        c = Serial.read();
+    }
+
+init_tmr16(); // カウンタの初期化
+Calculation_InverseKinematics();
+init_PLS();
+
+start_tmr16(); // のカウント開始
+
+}
+
+void loop(){
+
+}
